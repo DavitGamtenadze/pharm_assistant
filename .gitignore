@@ -4,3 +4,30 @@
 
 # LangGraph
 .langgraph_api/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+
+# Local configuration and generated data
+.env
+.data/
+data/uploads/
+data/chroma/
+data/cache/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
