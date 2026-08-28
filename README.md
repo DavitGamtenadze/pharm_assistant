@@ -223,14 +223,28 @@ OpenAPI docs, and rate-limits upload and question routes.
 uv run ruff check src tests scripts
 uv run pytest
 uv run python scripts/evaluate.py
-
-Set-Location frontend
-npm run lint
-npm run build
 ```
 
 `scripts/evaluate.py` indexes a synthetic handbook and reports page-level
 retrieval hit rate. It does not call OpenAI.
+
+To see how the model actually answers, cite, and refuse missing facts:
+
+```powershell
+uv run python scripts/evaluate.py --generation
+uv run pytest -m live_openai
+```
+
+`--generation` uses the committed demo PDFs and `evals/generation_cases.json`.
+Each case checks the exact fallback, required phrases, citation markers, and
+cited page. Add `--judge` to have the model grade groundedness, or
+`--strict-judge` to fail a case when that grade is false.
+
+```powershell
+Set-Location frontend
+npm run lint
+npm run build
+```
 
 ## Privacy and licensing
 

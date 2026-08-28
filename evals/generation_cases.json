@@ -1,0 +1,70 @@
+[
+  {
+    "id": "trial-primary-endpoint",
+    "document": "synthetic_clinical_trial_summary.pdf",
+    "question": "What primary endpoint was reported?",
+    "expect_fallback": false,
+    "must_include": ["Example Symptom Score", "week 12"],
+    "expected_page": 1
+  },
+  {
+    "id": "trial-efficacy-difference",
+    "document": "synthetic_clinical_trial_summary.pdf",
+    "question": "What was the estimated between-group difference at week 12?",
+    "expect_fallback": false,
+    "must_include": ["5.3"],
+    "expected_page": 2
+  },
+  {
+    "id": "trial-common-aes",
+    "document": "synthetic_clinical_trial_summary.pdf",
+    "question": "Which adverse events were most frequently recorded with MDX-101?",
+    "expect_fallback": false,
+    "must_include": ["nausea"],
+    "expected_page": 3
+  },
+  {
+    "id": "monograph-storage",
+    "document": "synthetic_medication_monograph.pdf",
+    "question": "At what temperature should unopened Examplevir bottles be stored?",
+    "expect_fallback": false,
+    "must_include": ["2", "8"],
+    "expected_page": 2
+  },
+  {
+    "id": "monograph-form",
+    "document": "synthetic_medication_monograph.pdf",
+    "question": "What dosage form is described for Examplevir?",
+    "expect_fallback": false,
+    "must_include": ["50 mg"],
+    "expected_page": 1
+  },
+  {
+    "id": "sop-sae-window",
+    "document": "synthetic_safety_reporting_sop.pdf",
+    "question": "How quickly must a serious adverse event be escalated?",
+    "expect_fallback": false,
+    "must_include": ["24 hours"],
+    "expected_page": 2
+  },
+  {
+    "id": "sop-retention",
+    "document": "synthetic_safety_reporting_sop.pdf",
+    "question": "How long are superseded controlled copies retained?",
+    "expect_fallback": false,
+    "must_include": ["seven years"],
+    "expected_page": 3
+  },
+  {
+    "id": "unsupported-pediatric-dose",
+    "document": "synthetic_medication_monograph.pdf",
+    "question": "What is the approved pediatric dose of Examplevir?",
+    "expect_fallback": true
+  },
+  {
+    "id": "unsupported-lab-value",
+    "document": "synthetic_clinical_trial_summary.pdf",
+    "question": "What was the mean serum creatinine at baseline?",
+    "expect_fallback": true
+  }
+]
