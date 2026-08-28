@@ -1196,6 +1196,13 @@
   white-space: pre-wrap;
 }
 
+.answer-copy--streaming::after {
+  content: '▍';
+  margin-left: 1px;
+  color: var(--brand);
+  animation: pulse 1s ease-in-out infinite;
+}
+
 .inline-citation {
   display: inline-flex;
   padding: 1px 4px;
