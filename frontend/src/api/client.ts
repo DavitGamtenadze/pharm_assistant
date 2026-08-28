@@ -143,3 +143,87 @@ export function askQuestion(payload: QuestionRequest) {
     body: JSON.stringify(payload),
   })
 }
+
+type StreamEvent =
+  | { type: 'token'; text: string }
+  | (QuestionResponse & { type: 'done' })
+  | { type: 'error'; detail: string }
+
+export async function askQuestionStream(
+  payload: QuestionRequest,
+  onToken: (text: string) => void,
+): Promise<QuestionResponse> {
+  const headers = new Headers({ 'Content-Type': 'application/json' })
+  if (API_KEY) headers.set('X-API-Key', API_KEY)
+
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE_URL}/api/v1/questions/stream`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    })
+  } catch {
+    throw new ApiError(
+      'Unable to reach the research service. Confirm the API is running and try again.',
+      0,
+    )
+  }
+
+  if (!response.ok) {
+    const responseText = await response.text()
+    let payloadJson: unknown = null
+    if (responseText) {
+      try {
+        payloadJson = JSON.parse(responseText)
+      } catch {
+        payloadJson = responseText
+      }
+    }
+    if (response.status === 429) {
+      throw new ApiError('Too many requests. Wait a moment and try again.', 429)
+    }
+    throw new ApiError(
+      getErrorMessage(payloadJson, `Request failed with status ${response.status}.`),
+      response.status,
+    )
+  }
+
+  if (!response.body) {
+    throw new ApiError('The answer stream could not be opened.', response.status)
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let finalResponse: QuestionResponse | null = null
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const blocks = buffer.split('\n\n')
+    buffer = blocks.pop() ?? ''
+
+    for (const block of blocks) {
+      const line = block
+        .split('\n')
+        .find((entry) => entry.startsWith('data: '))
+      if (!line) continue
+      const event = JSON.parse(line.slice(6)) as StreamEvent
+      if (event.type === 'token') {
+        onToken(event.text)
+      } else if (event.type === 'done') {
+        const { type: _type, ...completed } = event
+        finalResponse = completed
+      } else if (event.type === 'error') {
+        throw new ApiError(event.detail, 503)
+      }
+    }
+  }
+
+  if (!finalResponse) {
+    throw new ApiError('The answer stream ended before a complete response.', 503)
+  }
+  return finalResponse
+}

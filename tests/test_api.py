@@ -7,6 +7,7 @@ import pytest
 from pharm_assistant.container import get_container
 from pharm_assistant.core.config import Settings, get_settings
 from pharm_assistant.main import app
+from pharm_assistant.models.schemas import QuestionResponse
 
 
 class FakeDocuments:
@@ -49,6 +50,65 @@ async def test_question_requires_a_selected_source() -> None:
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
             "/api/v1/questions",
+            json={
+                "question": "What does the document report?",
+                "document_ids": [],
+            },
+        )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "Select at least one document or enable external literature."
+    )
+
+
+@pytest.mark.asyncio
+async def test_question_stream_emits_tokens_then_done() -> None:
+    class FakeQuestions:
+        async def answer_stream(self, request: object):
+            del request
+            yield ("token", "Partial ")
+            yield ("token", "answer [doc:abc123 p.1]")
+            yield (
+                "done",
+                QuestionResponse(
+                    answer="Partial answer [doc:abc123 p.1]",
+                    citations=[],
+                    request_id="req-1",
+                    latency_ms=12,
+                ),
+            )
+
+    app.dependency_overrides[get_container] = lambda: SimpleNamespace(
+        questions=FakeQuestions(),
+    )
+    transport = httpx.ASGITransport(app=app)
+    try:
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(
+                "/api/v1/questions/stream",
+                json={
+                    "question": "What does the document report?",
+                    "document_ids": ["abc123"],
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert '"type": "token"' in response.text
+    assert "Partial " in response.text
+    assert '"type": "done"' in response.text
+    assert "Partial answer [doc:abc123 p.1]" in response.text
+
+
+@pytest.mark.asyncio
+async def test_question_stream_requires_a_selected_source() -> None:
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/questions/stream",
             json={
                 "question": "What does the document report?",
                 "document_ids": [],
