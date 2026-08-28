@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   AlertCircle,
   BookOpen,
+  ChevronDown,
+  ChevronUp,
   ExternalLink,
   FileText,
   Layers3,
@@ -46,6 +48,7 @@ function DocumentPagePreview({
   page: number
   title: string
 }) {
+  const previewRef = useRef<HTMLDivElement>(null)
   const [imageUrl, setImageUrl] = useState<string | null>(null)
 
   useEffect(() => {
@@ -71,14 +74,26 @@ function DocumentPagePreview({
     }
   }, [documentId, page])
 
-  if (!imageUrl) return null
+  useEffect(() => {
+    previewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [documentId, page])
 
   return (
-    <img
-      className="pdf-preview"
-      src={imageUrl}
-      alt={`${title} page ${page}`}
-    />
+    <div className="evidence-preview" ref={previewRef}>
+      <iframe
+        key={`${documentId}-${page}`}
+        className="pdf-frame"
+        title={`${title} page ${page}`}
+        src={getDocumentFileUrl(documentId, page)}
+      />
+      {imageUrl ? (
+        <img
+          className="pdf-preview"
+          src={imageUrl}
+          alt={`${title} page ${page}`}
+        />
+      ) : null}
+    </div>
   )
 }
 
@@ -97,6 +112,17 @@ export function EvidencePanel({
 }: EvidencePanelProps) {
   const citationRefs = useRef(new Map<string, HTMLElement>())
   const citations = activeTurn?.citations ?? []
+  const activeIndex = citations.findIndex((citation) => citation.id === activeCitationId)
+
+  const stepCitation = useCallback(
+    (delta: number) => {
+      if (citations.length === 0) return
+      const current = activeIndex < 0 ? 0 : activeIndex
+      const next = citations[(current + delta + citations.length) % citations.length]
+      onSelectCitation(next.id)
+    },
+    [activeIndex, citations, onSelectCitation],
+  )
 
   useEffect(() => {
     if (!activeCitationId) return
@@ -104,6 +130,31 @@ export function EvidencePanel({
     citation?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     citation?.focus({ preventScroll: true })
   }, [activeCitationId, isOpen])
+
+  useEffect(() => {
+    if (citations.length === 0) return
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target
+      if (target instanceof HTMLElement) {
+        const tag = target.tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) {
+          return
+        }
+      }
+      if (event.key === 'j') {
+        event.preventDefault()
+        stepCitation(1)
+      }
+      if (event.key === 'k') {
+        event.preventDefault()
+        stepCitation(-1)
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [citations.length, stepCitation])
 
   return (
     <aside
@@ -118,7 +169,29 @@ export function EvidencePanel({
         </div>
         <div className="evidence-heading-actions">
           {citations.length > 0 && (
-            <span className="evidence-count">{citations.length}</span>
+            <div className="evidence-nav">
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => stepCitation(-1)}
+                aria-label="Previous citation"
+                title="Previous citation (k)"
+              >
+                <ChevronUp size={16} />
+              </button>
+              <span className="evidence-count">
+                {`${activeIndex < 0 ? 1 : activeIndex + 1} / ${citations.length}`}
+              </span>
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => stepCitation(1)}
+                aria-label="Next citation"
+                title="Next citation (j)"
+              >
+                <ChevronDown size={16} />
+              </button>
+            </div>
           )}
           <button
             type="button"

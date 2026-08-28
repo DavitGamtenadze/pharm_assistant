@@ -97,6 +97,7 @@ async def test_document_file_is_served_inline(tmp_path: Path) -> None:
     assert missing.status_code == 404
     assert found.status_code == 200
     assert found.headers["content-type"].startswith("application/pdf")
+    assert found.headers.get("x-frame-options") != "DENY"
     assert found.content.startswith(b"%PDF-")
     assert missing_page.status_code == 404
     assert page.status_code == 200
