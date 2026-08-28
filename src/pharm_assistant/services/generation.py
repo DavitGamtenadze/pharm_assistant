@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -97,6 +97,46 @@ class OpenAIGenerator:
             msg = f"The configured OpenAI model '{self.model}' could not answer."
             raise GenerationUnavailableError(msg) from exc
 
+    async def astream(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        trace_metadata: dict[str, Any] | None = None,
+    ) -> AsyncIterator[str]:
+        if self._client is None:
+            raise GenerationUnavailableError(
+                "OPENAI_API_KEY is not configured. Add it to .env before asking questions."
+            )
+        try:
+            saw_text = False
+            async for chunk in self._client.astream(
+                [
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=user_prompt),
+                ],
+                config={
+                    "callbacks": self._callbacks,
+                    "run_name": "grounded_medical_answer",
+                    "metadata": trace_metadata or {},
+                },
+            ):
+                finish_reason = chunk.response_metadata.get("finish_reason")
+                response_status = chunk.response_metadata.get("status")
+                if finish_reason in {"length", "max_tokens"} or response_status == "incomplete":
+                    raise GenerationUnavailableError(
+                        "OpenAI reached the output limit before completing a grounded answer."
+                    )
+                text = _chunk_text(chunk.content)
+                if text:
+                    saw_text = True
+                    yield text
+            if not saw_text:
+                raise GenerationUnavailableError("OpenAI returned an empty answer.")
+        except (OpenAIError, ValueError) as exc:
+            msg = f"The configured OpenAI model '{self.model}' could not answer."
+            raise GenerationUnavailableError(msg) from exc
+
     async def close(self) -> None:
         if self._client is not None:
             root_client = self._client.root_async_client
@@ -106,3 +146,19 @@ class OpenAIGenerator:
 
 def _optional_int(value: object) -> int | None:
     return int(value) if isinstance(value, int | float) else None
+
+
+def _chunk_text(content: object) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "".join(parts)
+    return ""

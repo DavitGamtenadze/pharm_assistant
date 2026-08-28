@@ -141,6 +141,7 @@ evals/                 retrieval cases
 | `GET` | `/api/v1/documents/{id}/pages/{n}` | Page preview (PDF / image) |
 | `DELETE` | `/api/v1/documents/{id}` | Remove file and chunks |
 | `POST` | `/api/v1/questions` | Retrieve and answer |
+| `POST` | `/api/v1/questions/stream` | Same answer as SSE tokens |
 
 Upload and ask:
 
@@ -196,4 +197,12 @@ uv run python scripts/evaluate.py
 cd frontend && npm run lint && npm run build
 ```
 
+Live model checks:
+
+```bash
+uv run python scripts/evaluate.py --generation
+uv run pytest -m live_openai
+```
+
 On Windows, `cd frontend; npm run lint; npm run build`.
+

@@ -33,6 +33,13 @@ type ActionNotice = {
   message: string
 } | null
 
+type UploadJob = {
+  id: string
+  name: string
+  status: 'queued' | 'indexing' | 'ready' | 'failed'
+  message?: string
+}
+
 function formatFileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
@@ -83,15 +90,26 @@ export function DocumentPanel({
 }: DocumentPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
-  const [isUploading, setIsUploading] = useState(false)
+  const [jobs, setJobs] = useState<UploadJob[]>([])
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [notice, setNotice] = useState<ActionNotice>(null)
+  const isUploading = jobs.some(
+    (job) => job.status === 'queued' || job.status === 'indexing',
+  )
   const allSelected =
     documents.length > 0 && selectedDocumentIds.size === documents.length
 
-  const handleUpload = async (file: File) => {
-    if (!isSupportedDocument(file)) {
+  const updateJob = (id: string, patch: Partial<UploadJob>) => {
+    setJobs((current) =>
+      current.map((job) => (job.id === id ? { ...job, ...patch } : job)),
+    )
+  }
+
+  const handleUpload = async (files: File[]) => {
+    const supported = files.filter(isSupportedDocument)
+    const skipped = files.length - supported.length
+    if (supported.length === 0) {
       setNotice({
         tone: 'error',
         message: 'Try a PDF, Word, text, HTML, or image file.',
@@ -99,25 +117,47 @@ export function DocumentPanel({
       return
     }
 
-    setNotice(null)
-    setIsUploading(true)
+    const nextJobs: UploadJob[] = supported.map((file) => ({
+      id: globalThis.crypto?.randomUUID?.() ?? `${file.name}-${file.size}-${Date.now()}`,
+      name: file.name,
+      status: 'queued',
+    }))
+    setJobs(nextJobs)
+    setNotice(
+      skipped
+        ? {
+            tone: 'error',
+            message: `${skipped} unsupported ${skipped === 1 ? 'file was' : 'files were'} skipped.`,
+          }
+        : null,
+    )
 
-    try {
-      await onUpload(file)
-      setNotice({
-        tone: 'success',
-        message: `${file.name} is indexed and ready to query.`,
-      })
-    } catch (error) {
-      setNotice({
-        tone: 'error',
-        message:
-          error instanceof Error ? error.message : 'The document could not be uploaded.',
-      })
-    } finally {
-      setIsUploading(false)
-      if (inputRef.current) inputRef.current.value = ''
+    let ready = 0
+    let failed = 0
+    for (const [index, file] of supported.entries()) {
+      updateJob(nextJobs[index].id, { status: 'indexing' })
+      try {
+        await onUpload(file)
+        updateJob(nextJobs[index].id, { status: 'ready' })
+        ready += 1
+      } catch (error) {
+        failed += 1
+        updateJob(nextJobs[index].id, {
+          status: 'failed',
+          message:
+            error instanceof Error ? error.message : 'The document could not be uploaded.',
+        })
+      }
     }
+
+    setNotice({
+      tone: failed > 0 && ready === 0 ? 'error' : 'success',
+      message:
+        failed === 0
+          ? `${ready} ${ready === 1 ? 'document is' : 'documents are'} indexed and ready to query.`
+          : `${ready} ready, ${failed} failed.`,
+    })
+    if (inputRef.current) inputRef.current.value = ''
   }
 
   const handleDelete = async (document: DocumentSummary) => {
@@ -169,10 +209,11 @@ export function DocumentPanel({
           className="visually-hidden"
           type="file"
           accept={ACCEPTED_EXTENSIONS.join(',')}
+          multiple
           disabled={isUploading}
           onChange={(event) => {
-            const file = event.target.files?.[0]
-            if (file) void handleUpload(file)
+            const files = [...(event.target.files ?? [])]
+            if (files.length > 0) void handleUpload(files)
           }}
         />
         <div
@@ -181,7 +222,7 @@ export function DocumentPanel({
           }`}
           role="button"
           tabIndex={isUploading ? -1 : 0}
-          aria-label="Upload a medical document"
+          aria-label="Upload medical documents"
           aria-disabled={isUploading}
           onClick={() => {
             if (!isUploading) inputRef.current?.click()
@@ -204,14 +245,7 @@ export function DocumentPanel({
             event.preventDefault()
             setIsDragging(false)
             const files = [...event.dataTransfer.files]
-            if (files.length > 1) {
-              setNotice({
-                tone: 'error',
-                message: 'Upload one file at a time so each source can be indexed.',
-              })
-              return
-            }
-            if (files[0] && !isUploading) void handleUpload(files[0])
+            if (files.length > 0 && !isUploading) void handleUpload(files)
           }}
         >
           <span className="upload-icon" aria-hidden="true">
@@ -222,12 +256,29 @@ export function DocumentPanel({
             )}
           </span>
           <div>
-            <strong>{isUploading ? 'Indexing document…' : 'Drop a medical document'}</strong>
+            <strong>{isUploading ? 'Indexing documents…' : 'Drop medical documents'}</strong>
             <span>
-              {isUploading ? 'Extracting pages and evidence' : 'or browse from your device'}
+              {isUploading
+                ? 'Extracting pages one file at a time'
+                : 'one or more files, or browse from your device'}
             </span>
           </div>
         </div>
+        {jobs.length > 0 && (
+          <ul className="upload-queue" aria-label="Upload progress">
+            {jobs.map((job) => (
+              <li className={`upload-job upload-job--${job.status}`} key={job.id}>
+                <span>{job.name}</span>
+                <small>
+                  {job.status === 'queued' && 'Queued'}
+                  {job.status === 'indexing' && 'Indexing'}
+                  {job.status === 'ready' && 'Ready'}
+                  {job.status === 'failed' && (job.message || 'Failed')}
+                </small>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <div className="panel-live-region" aria-live="polite">
