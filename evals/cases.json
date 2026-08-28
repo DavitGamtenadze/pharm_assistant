@@ -1,0 +1,14 @@
+[
+  {
+    "question": "At what temperature should unopened study medication be stored?",
+    "expected_page": 1
+  },
+  {
+    "question": "How quickly must a serious adverse event be escalated?",
+    "expected_page": 2
+  },
+  {
+    "question": "How long are superseded controlled documents retained?",
+    "expected_page": 3
+  }
+]
