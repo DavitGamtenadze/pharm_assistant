@@ -68,7 +68,8 @@ def create_app() -> FastAPI:
             response.headers["X-Request-ID"] = request_id
             response.headers["X-Content-Type-Options"] = "nosniff"
             response.headers["Referrer-Policy"] = "no-referrer"
-            response.headers["X-Frame-Options"] = "DENY"
+            if not request.url.path.endswith("/file"):
+                response.headers["X-Frame-Options"] = "DENY"
             response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
             if settings.env == "production":
                 response.headers["Strict-Transport-Security"] = (
