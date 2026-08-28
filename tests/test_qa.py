@@ -48,6 +48,21 @@ class FakeGenerator:
         assert trace_metadata and "retrieved_chunk_count" in trace_metadata
         return GenerationResult(text=self.answer, input_tokens=100, output_tokens=20)
 
+    async def astream(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        trace_metadata: dict[str, object] | None = None,
+    ):
+        assert "medical document research assistant" in system_prompt
+        assert "<context>" in user_prompt
+        assert trace_metadata and "retrieved_chunk_count" in trace_metadata
+        midpoint = max(1, len(self.answer) // 2)
+        yield self.answer[:midpoint]
+        if self.answer[midpoint:]:
+            yield self.answer[midpoint:]
+
 
 class FakeLiterature:
     def __init__(self, articles: list[LiteratureArticle] | None = None) -> None:
@@ -167,3 +182,37 @@ async def test_external_literature_is_returned_as_structured_evidence() -> None:
 
     assert result.citations[0].type == CitationType.LITERATURE
     assert result.citations[0].external_id == "12345678"
+
+
+@pytest.mark.asyncio
+async def test_stream_replaces_uncited_generation_with_exact_fallback() -> None:
+    service = _service("The primary endpoint improved.")
+    events: list[object] = []
+
+    async for event in service.answer_stream(
+        QuestionRequest(question="What was the endpoint result?", document_ids=["abc123"])
+    ):
+        events.append(event)
+
+    tokens = [payload for kind, payload in events if kind == "token"]
+    done = [payload for kind, payload in events if kind == "done"]
+    assert tokens
+    assert "".join(str(token) for token in tokens) == "The primary endpoint improved."
+    assert len(done) == 1
+    assert done[0].answer == FALLBACK_ANSWER
+    assert done[0].citations == []
+
+
+@pytest.mark.asyncio
+async def test_stream_keeps_cited_tokens_in_the_final_answer() -> None:
+    service = _service("The primary endpoint improved by 12 percent [doc:abc123 p.4].")
+    events: list[object] = []
+
+    async for event in service.answer_stream(
+        QuestionRequest(question="What was the endpoint result?", document_ids=["abc123"])
+    ):
+        events.append(event)
+
+    done = [payload for kind, payload in events if kind == "done"]
+    assert done[0].answer.endswith("[doc:abc123 p.4].")
+    assert [citation.id for citation in done[0].citations] == ["chunk-1"]

@@ -155,6 +155,7 @@ scripts/               demo PDFs and evaluation
 | `GET` | `/api/v1/documents/{id}/pages/{n}` | Preview one page as PNG |
 | `DELETE` | `/api/v1/documents/{id}` | Remove the PDF and its chunks |
 | `POST` | `/api/v1/questions` | Retrieve evidence and answer |
+| `POST` | `/api/v1/questions/stream` | Same answer as SSE tokens |
 
 Upload:
 
