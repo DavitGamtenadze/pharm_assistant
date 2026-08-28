@@ -12,7 +12,7 @@ do not support a claim, it says so.
 
 ## What you can do
 
-1. Drop a text-based PDF into the source library.
+1. Drop one or more text-based PDFs into the source library.
 2. Select which documents the question should use.
 3. Ask a question in the workspace.
 4. Open the cited page and excerpt in the evidence panel.
