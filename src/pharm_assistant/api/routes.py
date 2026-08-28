@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import (
@@ -13,7 +15,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
 from pharm_assistant.container import ServiceContainer, get_container
@@ -194,3 +196,40 @@ async def ask_question(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
         ) from exc
+
+
+@api_router.post("/questions/stream")
+async def ask_question_stream(
+    request: QuestionRequest,
+    services: Annotated[ServiceContainer, Depends(get_container)],
+    _: Annotated[None, Depends(require_rate_limit(question_limiter))],
+) -> StreamingResponse:
+    if not request.document_ids and not request.include_literature:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Select at least one document or enable external literature.",
+        )
+
+    async def events() -> AsyncIterator[str]:
+        try:
+            async for kind, payload in services.questions.answer_stream(request):
+                if kind == "token":
+                    yield _sse({"type": "token", "text": payload})
+                elif isinstance(payload, QuestionResponse):
+                    yield _sse({"type": "done", **payload.model_dump(mode="json")})
+        except GenerationUnavailableError as exc:
+            yield _sse({"type": "error", "detail": str(exc)})
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+def _sse(payload: dict[str, object]) -> str:
+    return f"data: {json.dumps(payload)}\n\n"

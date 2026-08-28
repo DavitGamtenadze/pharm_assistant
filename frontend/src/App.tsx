@@ -5,7 +5,7 @@ import { EvidencePanel } from './components/EvidencePanel'
 import { QuestionWorkspace } from './components/QuestionWorkspace'
 import { SafetyNotice } from './components/SafetyNotice'
 import {
-  askQuestion,
+  askQuestionStream,
   deleteDocument,
   getDocuments,
   getHealth,
@@ -185,12 +185,23 @@ function App() {
     setActiveCitationId(null)
 
     try {
-      const response = await askQuestion({
-        question,
-        document_ids: documentIds,
-        top_k: 8,
-        include_literature: searchLiterature,
-      })
+      const response = await askQuestionStream(
+        {
+          question,
+          document_ids: documentIds,
+          top_k: 8,
+          include_literature: searchLiterature,
+        },
+        (text) => {
+          setTurns((currentTurns) =>
+            currentTurns.map((turn) =>
+              turn.id === turnId
+                ? { ...turn, answer: `${turn.answer}${text}` }
+                : turn,
+            ),
+          )
+        },
+      )
 
       setTurns((currentTurns) =>
         currentTurns.map((turn) =>

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import re
 import time
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -42,6 +43,14 @@ class ContextSource:
     citation: Citation
 
 
+@dataclass(frozen=True, slots=True)
+class RetrievedContext:
+    local_chunks: list[RetrievedChunk]
+    articles: list[LiteratureArticle]
+    sources: list[ContextSource]
+    started: float
+
+
 class PromptBuilder:
     def __init__(self, template_path: Path) -> None:
         environment = Environment(
@@ -75,6 +84,73 @@ class QuestionService:
         self._logger = get_logger()
 
     async def answer(self, request: QuestionRequest) -> QuestionResponse:
+        context = await self._retrieve(request)
+        request_id = request_id_var.get()
+        if not context.sources:
+            return QuestionResponse(
+                answer=FALLBACK_ANSWER,
+                citations=[],
+                request_id=request_id,
+                latency_ms=_elapsed_ms(context.started),
+            )
+
+        prompt = self._prompt_builder.render(request.question, context.sources)
+        generation = await self._generator.generate(
+            system_prompt=SYSTEM_PROMPT,
+            user_prompt=prompt,
+            trace_metadata=self._trace_metadata(request, context, request_id),
+        )
+        answer, citations = _validate_answer(generation.text, context.sources)
+        return self._finish(
+            context,
+            answer=answer,
+            citations=citations,
+            request_id=request_id,
+            input_tokens=generation.input_tokens,
+            output_tokens=generation.output_tokens,
+        )
+
+    async def answer_stream(
+        self,
+        request: QuestionRequest,
+    ) -> AsyncIterator[tuple[str, str] | tuple[str, QuestionResponse]]:
+        context = await self._retrieve(request)
+        request_id = request_id_var.get()
+        if not context.sources:
+            yield (
+                "done",
+                QuestionResponse(
+                    answer=FALLBACK_ANSWER,
+                    citations=[],
+                    request_id=request_id,
+                    latency_ms=_elapsed_ms(context.started),
+                ),
+            )
+            return
+
+        prompt = self._prompt_builder.render(request.question, context.sources)
+        pieces: list[str] = []
+        async for token in self._generator.astream(
+            system_prompt=SYSTEM_PROMPT,
+            user_prompt=prompt,
+            trace_metadata=self._trace_metadata(request, context, request_id),
+        ):
+            pieces.append(token)
+            yield ("token", token)
+
+        generated = "".join(pieces)
+        answer, citations = _validate_answer(generated, context.sources)
+        yield (
+            "done",
+            self._finish(
+                context,
+                answer=answer,
+                citations=citations,
+                request_id=request_id,
+            ),
+        )
+
+    async def _retrieve(self, request: QuestionRequest) -> RetrievedContext:
         started = time.perf_counter()
         local_task = asyncio.to_thread(
             self._store.query,
@@ -93,38 +169,46 @@ class QuestionService:
             local_chunks = await local_task
             articles = []
 
-        sources = self._assemble_sources(local_chunks, articles)
-        request_id = request_id_var.get()
-        if not sources:
-            return QuestionResponse(
-                answer=FALLBACK_ANSWER,
-                citations=[],
-                request_id=request_id,
-                latency_ms=_elapsed_ms(started),
-            )
-
-        prompt = self._prompt_builder.render(request.question, sources)
-        generation = await self._generator.generate(
-            system_prompt=SYSTEM_PROMPT,
-            user_prompt=prompt,
-            trace_metadata={
-                "request_id": request_id,
-                "document_count": len(request.document_ids),
-                "retrieved_chunk_count": len(local_chunks),
-                "literature_count": len(articles),
-            },
+        return RetrievedContext(
+            local_chunks=local_chunks,
+            articles=articles,
+            sources=self._assemble_sources(local_chunks, articles),
+            started=started,
         )
-        answer, citations = _validate_answer(generation.text, sources)
-        latency_ms = _elapsed_ms(started)
+
+    def _trace_metadata(
+        self,
+        request: QuestionRequest,
+        context: RetrievedContext,
+        request_id: str | None,
+    ) -> dict[str, object]:
+        return {
+            "request_id": request_id,
+            "document_count": len(request.document_ids),
+            "retrieved_chunk_count": len(context.local_chunks),
+            "literature_count": len(context.articles),
+        }
+
+    def _finish(
+        self,
+        context: RetrievedContext,
+        *,
+        answer: str,
+        citations: list[Citation],
+        request_id: str | None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+    ) -> QuestionResponse:
+        latency_ms = _elapsed_ms(context.started)
         self._logger.info(
             "question_answered",
             latency_ms=latency_ms,
-            retrieved_chunk_ids=[chunk.id for chunk in local_chunks],
-            retrieval_scores=[round(chunk.score, 4) for chunk in local_chunks],
-            literature_count=len(articles),
+            retrieved_chunk_ids=[chunk.id for chunk in context.local_chunks],
+            retrieval_scores=[round(chunk.score, 4) for chunk in context.local_chunks],
+            literature_count=len(context.articles),
             citation_count=len(citations),
-            input_tokens=generation.input_tokens,
-            output_tokens=generation.output_tokens,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
             used_fallback=answer == FALLBACK_ANSWER,
         )
         return QuestionResponse(

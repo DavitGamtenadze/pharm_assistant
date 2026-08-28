@@ -46,8 +46,11 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-addopts = "-ra --strict-markers"
+addopts = "-ra --strict-markers -m \"not live_openai\""
 asyncio_mode = "auto"
+markers = [
+    "live_openai: call the configured OpenAI model (opt in with -m live_openai)",
+]
 testpaths = ["tests"]
 
 [tool.coverage.run]

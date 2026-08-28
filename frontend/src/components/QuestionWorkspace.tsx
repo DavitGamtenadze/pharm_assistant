@@ -227,11 +227,21 @@ export function QuestionWorkspace({
                       <div className="answer-loading" role="status">
                         <div className="thinking-label">
                           <LoaderCircle className="spin" size={15} />
-                          Reviewing selected evidence…
+                          {turn.answer
+                            ? 'Writing grounded answer…'
+                            : 'Reviewing selected evidence…'}
                         </div>
-                        <span />
-                        <span />
-                        <span />
+                        {turn.answer ? (
+                          <div className="answer-copy answer-copy--streaming">
+                            {turn.answer}
+                          </div>
+                        ) : (
+                          <>
+                            <span />
+                            <span />
+                            <span />
+                          </>
+                        )}
                       </div>
                     )}
 
