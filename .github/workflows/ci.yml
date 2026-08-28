@@ -16,6 +16,16 @@ jobs:
       - run: uv sync --group dev
       - run: uv run ruff check src tests scripts
       - run: uv run pytest
+      - run: uv run python scripts/evaluate.py
+      - name: Score grounded answers
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "Skipping generation eval; OPENAI_API_KEY secret is not set."
+            exit 0
+          fi
+          uv run python scripts/evaluate.py --generation
 
   frontend:
     runs-on: ubuntu-latest
