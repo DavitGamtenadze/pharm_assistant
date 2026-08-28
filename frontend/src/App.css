@@ -577,6 +577,52 @@
   line-height: 1.35;
 }
 
+.upload-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.upload-job {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 1.35;
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+}
+
+.upload-job span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upload-job small {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.upload-job--indexing small {
+  color: var(--amber);
+}
+
+.upload-job--ready small {
+  color: #2f6f4e;
+}
+
+.upload-job--failed small {
+  color: var(--red);
+}
+
 .panel-live-region {
   flex: 0 0 auto;
   padding: 0 14px;
