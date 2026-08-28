@@ -1,6 +1,9 @@
+from pathlib import Path
+
 import pymupdf
 
 from pharm_assistant.services.extraction import (
+    extract_document,
     extract_pdf,
     is_usable_text,
     sanitize_extracted_text,
@@ -71,3 +74,56 @@ def test_extract_pdf_keeps_page_numbers_and_drops_repeated_headers(tmp_path) -> 
     assert all(HEADER not in page.text for page in pages)
     assert "independent double checks" in pages[1].text
     assert is_usable_text(pages[1].text)
+
+
+def test_extract_docx_and_plain_text(tmp_path: Path) -> None:
+    from docx import Document
+
+    path = tmp_path / "monograph.docx"
+    document = Document()
+    document.add_heading("Dosage and administration", level=1)
+    document.add_paragraph(
+        "High-alert medicines require an independent double check before administration."
+    )
+    document.save(path)
+
+    pages = extract_document(path)
+    assert pages[0].page_number == 1
+    assert "independent double check" in pages[0].text
+
+    notes = tmp_path / "notes.txt"
+    notes.write_text(
+        "Look-alike sound-alike names increase selection errors in busy clinics.",
+        encoding="utf-8",
+    )
+    text_pages = extract_document(notes)
+    assert "Look-alike sound-alike" in text_pages[0].text
+
+    rtf = tmp_path / "note.rtf"
+    rtf.write_text(
+        r"{\rtf1\ansi High-alert medicines require an independent double check.}",
+        encoding="utf-8",
+    )
+    assert "independent double check" in extract_document(rtf)[0].text
+
+
+def test_extract_scanned_pdf_uses_ocr(tmp_path: Path) -> None:
+    source = pymupdf.open()
+    page = source.new_page()
+    page.insert_text(
+        (72, 140),
+        "High-alert medicines require an independent double check.",
+        fontsize=16,
+    )
+    pixmap = page.get_pixmap(matrix=pymupdf.Matrix(2, 2), alpha=False)
+    source.close()
+
+    scanned = pymupdf.open()
+    image_page = scanned.new_page()
+    image_page.insert_image(image_page.rect, pixmap=pixmap)
+    path = tmp_path / "scan.pdf"
+    path.write_bytes(scanned.tobytes())
+    scanned.close()
+
+    pages = extract_pdf(path)
+    assert any("independent double check" in page.text.lower() for page in pages)

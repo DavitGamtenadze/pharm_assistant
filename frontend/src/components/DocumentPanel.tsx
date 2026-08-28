@@ -46,8 +46,32 @@ function formatFileSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function isPdf(file: File) {
-  return file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+const ACCEPTED_EXTENSIONS = [
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.odt',
+  '.rtf',
+  '.txt',
+  '.md',
+  '.html',
+  '.htm',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.tif',
+  '.tiff',
+  '.webp',
+]
+
+function isSupportedDocument(file: File) {
+  const name = file.name.toLowerCase()
+  return ACCEPTED_EXTENSIONS.some((extension) => name.endsWith(extension))
+}
+
+function fileKind(filename: string) {
+  const extension = filename.split('.').pop()?.toUpperCase()
+  return extension && extension.length <= 5 ? extension : 'FILE'
 }
 
 export function DocumentPanel({
@@ -83,17 +107,17 @@ export function DocumentPanel({
   }
 
   const handleUpload = async (files: File[]) => {
-    const pdfs = files.filter(isPdf)
-    const skipped = files.length - pdfs.length
-    if (pdfs.length === 0) {
+    const supported = files.filter(isSupportedDocument)
+    const skipped = files.length - supported.length
+    if (supported.length === 0) {
       setNotice({
         tone: 'error',
-        message: 'Choose PDF files. Other formats are not supported.',
+        message: 'Try a PDF, Word, text, HTML, or image file.',
       })
       return
     }
 
-    const nextJobs: UploadJob[] = pdfs.map((file) => ({
+    const nextJobs: UploadJob[] = supported.map((file) => ({
       id: globalThis.crypto?.randomUUID?.() ?? `${file.name}-${file.size}-${Date.now()}`,
       name: file.name,
       status: 'queued',
@@ -103,14 +127,14 @@ export function DocumentPanel({
       skipped
         ? {
             tone: 'error',
-            message: `${skipped} non-PDF ${skipped === 1 ? 'file was' : 'files were'} skipped.`,
+            message: `${skipped} unsupported ${skipped === 1 ? 'file was' : 'files were'} skipped.`,
           }
         : null,
     )
 
     let ready = 0
     let failed = 0
-    for (const [index, file] of pdfs.entries()) {
+    for (const [index, file] of supported.entries()) {
       updateJob(nextJobs[index].id, { status: 'indexing' })
       try {
         await onUpload(file)
@@ -184,7 +208,7 @@ export function DocumentPanel({
           ref={inputRef}
           className="visually-hidden"
           type="file"
-          accept=".pdf,application/pdf"
+          accept={ACCEPTED_EXTENSIONS.join(',')}
           multiple
           disabled={isUploading}
           onChange={(event) => {
@@ -198,7 +222,7 @@ export function DocumentPanel({
           }`}
           role="button"
           tabIndex={isUploading ? -1 : 0}
-          aria-label="Upload medical PDFs"
+          aria-label="Upload medical documents"
           aria-disabled={isUploading}
           onClick={() => {
             if (!isUploading) inputRef.current?.click()
@@ -232,7 +256,7 @@ export function DocumentPanel({
             )}
           </span>
           <div>
-            <strong>{isUploading ? 'Indexing documents…' : 'Drop medical PDFs'}</strong>
+            <strong>{isUploading ? 'Indexing documents…' : 'Drop medical documents'}</strong>
             <span>
               {isUploading
                 ? 'Extracting pages one file at a time'
@@ -329,7 +353,7 @@ export function DocumentPanel({
               <FilePlus2 size={24} />
             </span>
             <strong>Build your source set</strong>
-            <p>Upload a medical PDF to begin asking evidence-grounded questions.</p>
+            <p>Upload a PDF, Word file, or note to start asking questions.</p>
           </div>
         )}
 
@@ -360,7 +384,7 @@ export function DocumentPanel({
                       </span>
                       <span className="file-type-icon" aria-hidden="true">
                         <FileText size={17} />
-                        <small>PDF</small>
+                        <small>{fileKind(document.filename)}</small>
                       </span>
                       <span className="document-copy">
                         <strong title={document.filename}>{document.filename}</strong>

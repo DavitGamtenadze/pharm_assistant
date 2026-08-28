@@ -29,7 +29,11 @@ from pharm_assistant.models.schemas import (
     QuestionRequest,
     QuestionResponse,
 )
-from pharm_assistant.services.documents import DocumentValidationError
+from pharm_assistant.services.documents import (
+    DocumentValidationError,
+    is_supported_filename,
+    media_type_for,
+)
 from pharm_assistant.services.extraction import DocumentExtractionError
 from pharm_assistant.services.generation import GenerationUnavailableError
 
@@ -78,19 +82,36 @@ async def list_documents(
 async def upload_document(
     services: Annotated[ServiceContainer, Depends(get_container)],
     settings: Annotated[Settings, Depends(get_settings)],
-    file: Annotated[UploadFile, File(description="A text-based PDF document")],
+    file: Annotated[UploadFile, File(description="A medical PDF, Word, text, or image file")],
     _: Annotated[None, Depends(require_rate_limit(upload_limiter))],
 ) -> DocumentSummary:
-    if file.content_type not in {"application/pdf", "application/octet-stream"}:
+    filename = file.filename or "document.pdf"
+    allowed_types = {
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.oasis.opendocument.text",
+        "application/rtf",
+        "text/rtf",
+        "text/plain",
+        "text/markdown",
+        "text/html",
+        "image/png",
+        "image/jpeg",
+        "image/tiff",
+        "image/webp",
+        "application/octet-stream",
+    }
+    if file.content_type not in allowed_types and not is_supported_filename(filename):
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Only PDF files are supported.",
+            detail="Unsupported file type. Try PDF, Word, text, HTML, or an image.",
         )
     content = await file.read(settings.max_upload_bytes + 1)
     try:
         return await run_in_threadpool(
             services.documents.ingest,
-            file.filename or "document.pdf",
+            filename,
             content,
         )
     except (DocumentValidationError, DocumentExtractionError) as exc:
@@ -108,7 +129,7 @@ async def download_document(
     doc_id: Annotated[str, Path(pattern=r"^[a-f0-9]{24}$")],
 ) -> FileResponse:
     summary = await run_in_threadpool(services.documents.get_document, doc_id)
-    path = await run_in_threadpool(services.documents.stored_pdf_path, doc_id)
+    path = await run_in_threadpool(services.documents.stored_file_path, doc_id)
     if summary is None or path is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -116,7 +137,7 @@ async def download_document(
         )
     return FileResponse(
         path,
-        media_type="application/pdf",
+        media_type=media_type_for(summary.filename),
         filename=summary.filename,
         content_disposition_type="inline",
     )
