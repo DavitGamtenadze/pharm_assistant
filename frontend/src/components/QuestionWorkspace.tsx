@@ -164,8 +164,8 @@ export function QuestionWorkspace({
             <span className="welcome-kicker">Grounded in your sources</span>
             <h2 id="welcome-heading">Explore medical evidence with confidence</h2>
             <p>
-              Ask focused questions across selected PDFs, then inspect the exact
-              page-level excerpts behind every response.
+              Ask focused questions across the files you selected, then check the
+              exact excerpts behind the answer.
             </p>
 
             <div className="capability-row" aria-label="Assistant capabilities">
@@ -282,7 +282,7 @@ export function QuestionWorkspace({
                                     ? citation.source || 'Literature'
                                     : citation.page
                                       ? `p. ${citation.page}`
-                                      : 'PDF'}
+                                      : 'source'}
                                 </small>
                               </button>
                             ))}

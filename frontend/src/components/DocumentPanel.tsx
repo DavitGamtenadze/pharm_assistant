@@ -39,8 +39,32 @@ function formatFileSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function isPdf(file: File) {
-  return file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+const ACCEPTED_EXTENSIONS = [
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.odt',
+  '.rtf',
+  '.txt',
+  '.md',
+  '.html',
+  '.htm',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.tif',
+  '.tiff',
+  '.webp',
+]
+
+function isSupportedDocument(file: File) {
+  const name = file.name.toLowerCase()
+  return ACCEPTED_EXTENSIONS.some((extension) => name.endsWith(extension))
+}
+
+function fileKind(filename: string) {
+  const extension = filename.split('.').pop()?.toUpperCase()
+  return extension && extension.length <= 5 ? extension : 'FILE'
 }
 
 export function DocumentPanel({
@@ -67,10 +91,10 @@ export function DocumentPanel({
     documents.length > 0 && selectedDocumentIds.size === documents.length
 
   const handleUpload = async (file: File) => {
-    if (!isPdf(file)) {
+    if (!isSupportedDocument(file)) {
       setNotice({
         tone: 'error',
-        message: 'Choose a PDF file. Other formats are not supported.',
+        message: 'Try a PDF, Word, text, HTML, or image file.',
       })
       return
     }
@@ -144,7 +168,7 @@ export function DocumentPanel({
           ref={inputRef}
           className="visually-hidden"
           type="file"
-          accept=".pdf,application/pdf"
+          accept={ACCEPTED_EXTENSIONS.join(',')}
           disabled={isUploading}
           onChange={(event) => {
             const file = event.target.files?.[0]
@@ -157,7 +181,7 @@ export function DocumentPanel({
           }`}
           role="button"
           tabIndex={isUploading ? -1 : 0}
-          aria-label="Upload a medical PDF"
+          aria-label="Upload a medical document"
           aria-disabled={isUploading}
           onClick={() => {
             if (!isUploading) inputRef.current?.click()
@@ -183,7 +207,7 @@ export function DocumentPanel({
             if (files.length > 1) {
               setNotice({
                 tone: 'error',
-                message: 'Upload one PDF at a time so each source can be indexed.',
+                message: 'Upload one file at a time so each source can be indexed.',
               })
               return
             }
@@ -198,7 +222,7 @@ export function DocumentPanel({
             )}
           </span>
           <div>
-            <strong>{isUploading ? 'Indexing document…' : 'Drop a medical PDF'}</strong>
+            <strong>{isUploading ? 'Indexing document…' : 'Drop a medical document'}</strong>
             <span>
               {isUploading ? 'Extracting pages and evidence' : 'or browse from your device'}
             </span>
@@ -278,7 +302,7 @@ export function DocumentPanel({
               <FilePlus2 size={24} />
             </span>
             <strong>Build your source set</strong>
-            <p>Upload a medical PDF to begin asking evidence-grounded questions.</p>
+            <p>Upload a PDF, Word file, or note to start asking questions.</p>
           </div>
         )}
 
@@ -309,7 +333,7 @@ export function DocumentPanel({
                       </span>
                       <span className="file-type-icon" aria-hidden="true">
                         <FileText size={17} />
-                        <small>PDF</small>
+                        <small>{fileKind(document.filename)}</small>
                       </span>
                       <span className="document-copy">
                         <strong title={document.filename}>{document.filename}</strong>

@@ -74,3 +74,40 @@ def test_document_service_rejects_non_pdf_content(tmp_path: Path) -> None:
         assert "valid PDF" in str(exc)
     else:
         raise AssertionError("Invalid PDF content should be rejected.")
+
+
+def test_document_service_indexes_a_docx(tmp_path: Path) -> None:
+    from docx import Document
+
+    settings = Settings(data_dir=tmp_path, chunk_size_words=50, chunk_overlap_words=10)
+    settings.ensure_directories()
+    service = DocumentService(settings, RecordingStore())  # type: ignore[arg-type]
+    path = tmp_path / "source.docx"
+    document = Document()
+    document.add_paragraph(
+        "The participant received study medication once daily. "
+        "Renal function was monitored throughout the study."
+    )
+    document.save(path)
+
+    summary = service.ingest("trial-notes.docx", path.read_bytes())
+
+    assert summary.filename == "trial-notes.docx"
+    assert summary.page_count >= 1
+    assert (settings.upload_dir / f"{summary.id}.docx").exists()
+    assert service.stored_file_path(summary.id) == settings.upload_dir / f"{summary.id}.docx"
+    assert service.delete(summary.id) is True
+    assert service.stored_file_path(summary.id) is None
+
+
+def test_document_service_rejects_unknown_types(tmp_path: Path) -> None:
+    settings = Settings(data_dir=tmp_path)
+    settings.ensure_directories()
+    service = DocumentService(settings, RecordingStore())  # type: ignore[arg-type]
+
+    try:
+        service.ingest("secrets.xlsx", b"not a spreadsheet")
+    except DocumentValidationError as exc:
+        assert "Unsupported file type" in str(exc)
+    else:
+        raise AssertionError("Unknown types should be rejected.")

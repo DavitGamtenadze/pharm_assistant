@@ -282,8 +282,8 @@ export function EvidencePanel({
                             rel="noreferrer"
                           >
                             {citation.page
-                              ? `Open PDF page ${citation.page}`
-                              : 'Open source PDF'}
+                              ? `Open source page ${citation.page}`
+                              : 'Open source file'}
                             <ExternalLink size={13} />
                           </a>
                         </>
